@@ -1,0 +1,7 @@
+{
+	"files.associations": {
+		"*.json": "jsonc",
+		"*.args": "makefile",
+		"process.h": "c"
+	}
+}
