@@ -14,8 +14,13 @@ typedef struct __impl_path_t
 extern CHAR *path_flatten(const path_t *path);
 extern path_t path_create(const CHAR *filepath);
 
+// [this\\is\\a_path]\\file.ext
 extern CHAR *path_parent(const path_t *path);
+// this\\is\\a_path\\[file.ext]
+extern CHAR *path_file(const path_t *path);
+// this\\is\\a_path\\[file].ext
 extern CHAR *path_filename(const path_t *path);
+// this\\is\\a_path\\file.[ext]
 extern CHAR *path_extension(const path_t *path);
 
 /// @note the actual path object isn't freed, ONLY the buffers and pools are freed

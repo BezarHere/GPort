@@ -21,6 +21,7 @@ typedef unsigned long long ulong;
 #define char_strcpy(dst, src) wcscpy(dst, src)
 #define char_strcpy_s(dst, dst_len, src) wcscpy_s(dst, dst_len, src)
 #define char_strchr(str, chr) wcschr(str, chr)
+#define char_strrchr(str, chr) wcsrchr(str, chr)
 #else
 #define CHAR char
 #define STR(s) s
@@ -32,6 +33,7 @@ typedef unsigned long long ulong;
 #define char_strcpy(dst, src) strcpy(dst, src)
 #define char_strcpy_s(dst, dst_len, src) strcpy_s(dst, dst_len, src)
 #define char_strchr(str, chr) strchr(str, chr)
+#define char_strrchr(str, chr) strrchr(str, chr)
 #endif
 
 #define ASSERT(cond) if (!(cond)) { printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT \"" __FILE__ "\" LINE %d\n", __LINE__); abort(); }
@@ -87,4 +89,23 @@ static inline int clampi(int value, int min, int max)
 	return min;
 }
 
+
+static inline void str_psplit_2(const CHAR *str, size_t splitpoint, OUT CHAR *left, OUT CHAR *right)
+{
+	const size_t len = char_strlen(str);
+	if (len < splitpoint)
+		splitpoint = len;
+
+	if (left)
+	{
+		memcpy(left, str, splitpoint * sizeof(CHAR));
+		left[splitpoint] = 0;
+	}
+
+	if (right)
+	{
+		memcpy(right, str + splitpoint, len - splitpoint);
+		right[len - splitpoint] = 0;
+	}
+}
 
