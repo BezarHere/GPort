@@ -1,5 +1,11 @@
 #include "dirscan.h"
+
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#pragma push_macro("CHAR")
+#undef CHAR
 #include <Windows.h>
+#pragma pop_macro("CHAR")
 enum { MaxPathSize = 1<<10, MaxPerDirSearchIterations = 1<<10 };
 
 typedef struct 
@@ -172,7 +178,7 @@ static inline DirEntry_t *_dirscan_imp(const dir_find_entry_t *entries, size_t c
 	return out_entries;
 }
 
-DirEntry_t * dirscan_deep(const char * dirpath, size_t *pcount)
+DirEntry_t * dirscan_search(const char * dirpath, size_t *pcount)
 {
 	size_t count = 0;
 
@@ -189,7 +195,7 @@ DirEntry_t * dirscan_deep(const char * dirpath, size_t *pcount)
 	return out_entries;
 }
 
-WDirEntry_t *wdirscan_deep(const wchar_t *dirpath, size_t *pcount)
+WDirEntry_t *wdirscan_search(const wchar_t *dirpath, size_t *pcount)
 {
 	size_t count = 0;
 
@@ -213,5 +219,5 @@ void dirscan_free(DirEntry_t *entries, size_t count)
 
 void wdirscan_free(WDirEntry_t *entries, size_t count)
 {
-	dirscan_free(entries, count);
+	dirscan_free((DirEntry_t *)entries, count);
 }

@@ -2,6 +2,10 @@
 	"files.associations": {
 		"*.json": "jsonc",
 		"*.args": "makefile",
-		"process.h": "c"
+		"process.h": "c",
+		"malloc.h": "c",
+		"dirscan.h": "c",
+		"windows.h": "c",
+		"windef.h": "c"
 	}
 }

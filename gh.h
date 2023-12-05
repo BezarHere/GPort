@@ -11,17 +11,27 @@ typedef unsigned int uint;
 typedef unsigned long long ulong;
 
 #ifdef UNICODE
-typedef wchar_t CHAR;
+#define CHAR wchar_t
+#define STR(s) L## s
+#define char_printf wprintf
 #define char_strlen(str) (wcslen(str))
 #define char_strlen_s(str, max_l) (wcsnlen(str, max_l))
 #define char_sprintf _swprintf
 #define char_sprintf_s swprintf
+#define char_strcpy(dst, src) wcscpy(dst, src)
+#define char_strcpy_s(dst, dst_len, src) wcscpy_s(dst, dst_len, src)
+#define char_strchr(str, chr) wcschr(str, chr)
 #else
-typedef char CHAR;
+#define CHAR char
+#define STR(s) s
+#define char_printf printf
 #define char_strlen(str) (strlen(str))
 #define char_strlen_s(str, max_l) (strnlen(str, max_l))
 #define char_sprintf sprintf
 #define char_sprintf_s sprintf_s
+#define char_strcpy(dst, src) strcpy(dst, src)
+#define char_strcpy_s(dst, dst_len, src) strcpy_s(dst, dst_len, src)
+#define char_strchr(str, chr) strchr(str, chr)
 #endif
 
 #define ASSERT(cond) if (!(cond)) { printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT \"" __FILE__ "\" LINE %d\n", __LINE__); abort(); }
@@ -76,4 +86,5 @@ static inline int clampi(int value, int min, int max)
 		return value < max ? value : max - 1;
 	return min;
 }
+
 
