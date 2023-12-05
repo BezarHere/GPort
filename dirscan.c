@@ -1,11 +1,5 @@
 #include "dirscan.h"
-
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#pragma push_macro("CHAR")
-#undef CHAR
-#include <Windows.h>
-#pragma pop_macro("CHAR")
+#include "os/win32.h"
 enum { MaxPathSize = 1<<10, MaxPerDirSearchIterations = 1<<10 };
 
 typedef struct 

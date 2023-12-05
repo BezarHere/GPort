@@ -2,22 +2,49 @@
 #include "main.h"
 #include "dirscan.h"
 #include "path.h"
-#include <Windows.h>
+#include "os/win32.h"
+
+static inline void run_process(nchar_t *args)
+{
+
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	si.hStdOutput = stdout;
+	ZeroMemory( &si, sizeof(si) );
+	si.cb = sizeof(si);
+	ZeroMemory( &pi, sizeof(pi) );
+
+#ifdef UNICHAR_MODE
+	CreateProcessW(NULL, args, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+#else
+	CreateProcessA(NULL, args, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+#endif
+
+	// Wait until child process exits.
+	WaitForSingleObject( pi.hProcess, INFINITE );
+
+	// Close process and thread handles. 
+	CloseHandle( pi.hProcess );
+	CloseHandle( pi.hThread );
+
+}
 
 int main(int argc, char *argv[])
 {
-	char_printf(STR("CHAR size: %zd\n"), sizeof(CHAR));
-	const CHAR *path = STR("\\\\Assets\\ACLib\\main.png\\");
+	nc_printf(STR("nchar_t size: %zd\n"), sizeof(nchar_t));
+	const nchar_t *path = "F:\\Assets\\gcc\\GPort\\os";
+	printf("quickfile flags: %x\n", quickf_flags(path));
 
 	for (size_t i = 0; i < 1; i++)
 	{
 		path_t ppath = path_create(path);
-		CHAR *parent = path_parent(&ppath), *filename = path_filename(&ppath), *extn = path_extension(&ppath);
-		// char_printf(STR("parent: \"%s\", filename: '%s', ext: '%s'\n"), parent, filename, extn);
+		nchar_t *parent = path_parent(&ppath), *filename = path_filename(&ppath), *extn = path_extension(&ppath);
+		// nc_printf(STR("parent: \"%s\", filename: '%s', ext: '%s'\n"), parent, filename, extn);
 		free(parent);
 		free(filename);
 		free(extn);
 		path_close(&ppath);
+
 
 		// size_t count;
 		// DirEntry_t *entries = dirscan_search(path, &count);
