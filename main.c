@@ -32,8 +32,16 @@ static inline void run_process(nchar_t *args)
 int main(int argc, char *argv[])
 {
 	nc_printf(STR("nchar_t size: %zd\n"), sizeof(nchar_t));
-	const nchar_t *path = "F:\\Assets\\gcc\\GPort\\os";
-	printf("quickfile flags: %x\n", quickf_flags(path));
+	const nchar_t *path = "F:\\Assets\\gcc\\GPort\\os\\win32.h";
+	QF_stats_t state = qf_get_stats(path);
+	if (state.flags & QF_Error)
+	{
+		nc_printf(STR("QF Error: %s\n"), qf_get_error());
+	}
+	else
+		printf("quickfile flags: %zd\n", state.flags);
+		printf("quickfile size: %zd\n", state.size);
+		printf("quickfile ct: %zd\n", state.creation_time);
 
 	for (size_t i = 0; i < 1; i++)
 	{
