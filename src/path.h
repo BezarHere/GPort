@@ -8,7 +8,7 @@
 typedef struct __impl_path_t
 {
 	size_t _segments_count;
-	nchar_t **_segments; // <- each pointer points to the total segments str
+	nchar_t **_segments; // <- each pointer points to the total segments pool
 } path_t;
 
 

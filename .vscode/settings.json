@@ -9,6 +9,7 @@
 		"windef.h": "c",
 		"thread": "c",
 		"path.h": "c",
-		"win32.h": "c"
+		"win32.h": "c",
+		"quickfile.h": "c"
 	}
 }

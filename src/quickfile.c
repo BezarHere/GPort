@@ -74,3 +74,9 @@ const nchar_t* qf_get_error()
 {
 	return g_last_error;
 }
+
+uint16_t qf_filetime_to_unixtime(FileTime_t filetime)
+{
+	
+	return 0;
+}
