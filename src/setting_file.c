@@ -1,16 +1,74 @@
 #include "setting_file.h"
 #include "malloc.h"
-enum { STGF_ChunkLen = 16, STGF_ErrorStrLen = 255 }; // each chunk consists of 16 key-value pairs
+
+#define STGF_ERROR_STR_N 255
+#define STGF_SECTOR_LEN 16
+#define STGF_DEFAULT_SECTOR_CAP (STGF_SECTOR_LEN * 18)
+
 typedef char stgf_char_t;
 
-static nchar_t g_ErrorStr[STGF_ErrorStrLen + 1] = {0};
-#define STGF_PARSE_ERR(msg) ((void)nc_sprintf_s(g_ErrorStr, STGF_ErrorStrLen, STR("STGF_PARSE_ERR AT %d:%d: " msg "\n"), cur_line, i - cur_line_begin))
+static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
+#define STGF_PARSE_ERR(msg) ((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %d:%d: " msg "\n"), cur_line, i - cur_line_begin))
 
 typedef struct
 {
-	size_t _len, _cap;
+	size_t _cap;
+	size_t slots; // kv pairs currently set
+	size_t size;
 	stgf_char_t *data;
 } stgf_KeyValueSector_t;
+
+static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const size_t str_n, size_t cur_line, size_t cur_line_begin)
+{
+	rangei_t range = {0};
+	bool in_qouts = false;
+	size_t i;
+	for (i = 0; i < str_n; i++)
+	{
+		// escaped char
+		if (str[i] == (stgf_char_t)'\\')
+		{
+			i++;
+			continue;
+		}
+
+		if (str[i] == (stgf_char_t)'"')
+		{
+			// found closing qout
+			if (in_qouts)
+				break;
+
+			// last char is double qouts, error
+			if (i == str_n - 1)
+			{
+				STGF_PARSE_ERR("No closing qoute (EOF)");
+				break;
+			}
+
+			range.begin = i + 1;
+			in_qouts = true;
+			continue;
+		}
+
+		if (in_qouts)
+		{
+			if (str[i] == (stgf_char_t)'\n')
+			{
+				STGF_PARSE_ERR("Qouts left open");
+				break;
+			}
+			continue;
+		}
+
+		if (stgf_is_whitespace(str[i]))
+		{
+			break;
+		}
+	}
+
+	range.end = i;
+	return range;
+}
 
 static inline bool stgf_is_digit(const stgf_char_t c)
 {
@@ -29,7 +87,33 @@ static inline bool stgf_is_letter(const stgf_char_t c)
 	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 }
 
-static inline void stgf_parse(const stgf_char_t *src, const size_t src_n, SettingFile_t *setting)
+static inline stgf_KeyValueSector_t stgf_new_sector(size_t capacity)
+{
+	// might be bugged
+	ASSERT(!(capacity & (size_t)-1));
+
+	stgf_KeyValueSector_t sector;
+	sector._cap = capacity;
+	sector.slots = 0;
+	sector.data = calloc(capacity, sizeof(stgf_char_t));
+	sector.size = 0;
+	
+	ASSERT(sector.data != NULL);
+
+	return sector;
+}
+
+static inline void stgf_expand_sector(stgf_KeyValueSector_t *sector, size_t new_capacity)
+{
+	sector->data = realloc(sector->data, new_capacity * sizeof(stgf_char_t));
+	ASSERT(sector->data != NULL);
+	
+	memset(sector->data + sector->_cap, 0, new_capacity - sector->_cap);
+	sector->_cap = new_capacity;
+}
+
+
+static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, SettingFile_t *setting)
 {
 	size_t values_cap = 32;
 
@@ -37,8 +121,7 @@ static inline void stgf_parse(const stgf_char_t *src, const size_t src_n, Settin
 	setting->values = calloc(values_cap, sizeof(*setting->values));
 	ASSERT(setting->values != NULL);
 
-
-	stgf_KeyValueSector_t kv_sector = {0};
+	stgf_KeyValueSector_t kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
 	
 	const stgf_char_t *src_ky = NULL;
 	size_t src_ky_ln = 0;
@@ -48,14 +131,17 @@ static inline void stgf_parse(const stgf_char_t *src, const size_t src_n, Settin
 
 	for (size_t i = 0; i < src_n; i++)
 	{
-		if (src[i] == (stgf_char_t)'\n')
+		// new line hit
+		if (str[i] == (stgf_char_t)'\n')
 		{
+			// no value after equal sigen in line
 			if (expecting_value)
 			{
 				STGF_PARSE_ERR("Expecting value");
 				break;
 			}
 
+			// no equal sigen in line, only a key
 			if (src_ky)
 			{
 				STGF_PARSE_ERR("Standalone key");
@@ -64,57 +150,17 @@ static inline void stgf_parse(const stgf_char_t *src, const size_t src_n, Settin
 
 			cur_line++;
 			cur_line_begin = i + 1;
+			continue;
 		}
 
-		if (stgf_is_whitespace(src[i]))
+		// whitespace skipped
+		if (stgf_is_whitespace(str[i]))
 			continue;
 		
+		// not a whitespace and expecting value, parse it
 		if (expecting_value)
 		{
-			size_t anchor = i;
-			bool in_qouts = false;
-			for (i++; i < src_n; i++)
-			{
-				// escaped char
-				if (src[i] == (stgf_char_t)'\\')
-				{
-					i++;
-					continue;
-				}
-
-				if (src[i] == (stgf_char_t)'"')
-				{
-					// found closing qout
-					if (in_qouts)
-						break;
-
-
-					// last char is double qouts, error
-					if (i == src_n - 1)
-					{
-						STGF_PARSE_ERR("No closing qoute (EOF)");
-						break;
-					}
-
-					anchor = i + 1;
-					in_qouts = true;
-				}
-
-				if (in_qouts)
-				{
-					if (src[i] == (stgf_char_t)'\n')
-					{
-						STGF_PARSE_ERR("Qouts left open");
-						break;
-					}
-					continue;
-				}
-
-				if (stgf_is_whitespace(src[i]))
-				{
-					break;
-				}
-			}
+			
 
 			if (setting->values_ln == values_cap)
 			{
@@ -123,13 +169,33 @@ static inline void stgf_parse(const stgf_char_t *src, const size_t src_n, Settin
 				ASSERT(setting->values != NULL);
 			}
 
+			// full sector slots, create the new one
+			if (kv_sector.slots == STGF_SECTOR_LEN)
+			{
+				kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
+			}
+			// full sector with more kv pairs to load, expand
+			else if (kv_sector.size == kv_sector._cap)
+			{
+				stgf_expand_sector(&kv_sector, kv_sector._cap * 2);
+			}
+
+			continue;
 		}
 		
-		if (src_ky && src[i] == (stgf_char_t)':')
+		if (src_ky)
 		{
-			// now, get a value
-			expecting_value = true;
+			if (str[i] == (stgf_char_t)'=')
+			{
+				// now, get a value
+				expecting_value = true;
+			}
+
+			continue;
 		}
+
+		// read key
+
 		
 	}
 
@@ -149,6 +215,7 @@ SettingFile_t stgf_fload(FILE *f)
 	// {
 	// 	// Error?
 	// }
+	(void)read_bytes;
 
 	SettingFile_t st = {0};
 	stgf_parse(str, flen, &st);
@@ -161,24 +228,27 @@ SettingFile_t stgf_fread(const nchar_t *src)
 {
 	const size_t src_len = nc_strlen(src);
 	const void *src_v = src;
-	const bool owened_src = sizeof(stgf_char_t) != src; 
+	const bool owened_src = sizeof(stgf_char_t) != sizeof(*src); 
+	void *owened_ptr = NULL;
 
 	// For if nchar_t is wide string and stgf_char_t is a char or vice versa
 	if (owened_src)
 	{
 		stgf_char_t *stgf_str = malloc(sizeof(stgf_char_t) * (src_len + 1));
+		ASSERT(stgf_str != NULL);
 		for (size_t i = 0; i < src_len; i++)
 		{
 			stgf_str[i] = (stgf_char_t)src[i];
 		}
 		src_v = stgf_str;
+		owened_ptr = stgf_str;
 	}
 
 	SettingFile_t st = {0};
 	stgf_parse(src_v, src_len, &st);
 	
 	if (owened_src)
-		free(src);
+		free(owened_ptr);
 
 	return st;
 }

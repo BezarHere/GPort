@@ -5,7 +5,7 @@ from typing import Callable, Iterable
 
 __folder__ = Path(__file__).parent
 
-DEFAULT_ARGS_PREFIX = 'gcc', '-fanalyzer', '-std=c2x'
+DEFAULT_ARGS_PREFIX = 'gcc', '-fanalyzer', '-std=c2x', '-Wall'
 DEFAULT_ARGS_SUFFIX_NON_DIS = '-o', 'main.exe'
 DEFAULT_ARGS_SUFFIX_DIS = '-o', 'main.asm'
 OUTPUT_EXC_FILE = ('.\\main.exe', )

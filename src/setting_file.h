@@ -6,7 +6,8 @@ typedef struct
 	size_t values_ln;
 	struct
 	{
-		nchar_t *kv[2];
+		nchar_t *key;
+		nchar_t *value;
 	} *values;
 
 } SettingFile_t;

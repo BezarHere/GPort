@@ -13,7 +13,7 @@ typedef unsigned long long ulong;
 #ifdef UNICODE
 #define UNICHAR_MODE
 typedef wchar_t nchar_t;
-#define STR(s) L## s
+#define STR(s) (L## s)
 #define nc_printf wprintf
 #define nc_strlen(str) (wcslen(str))
 #define nc_strlen_s(str, max_l) (wcsnlen(str, max_l))
@@ -27,7 +27,7 @@ typedef wchar_t nchar_t;
 #define WIN_API(func) func## W
 #else
 typedef char nchar_t;
-#define STR(s) s
+#define STR(s) (s)
 #define nc_printf printf
 #define nc_strlen(str) (strlen(str))
 #define nc_strlen_s(str, max_l) (strnlen(str, max_l))
@@ -41,7 +41,7 @@ typedef char nchar_t;
 #define WIN_API(func) func## A
 #endif
 
-#define ASSERT(cond) if (!(cond)) { printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT \"" __FILE__ "\" LINE %d\n", __LINE__); abort(); }
+#define ASSERT(cond) if (!(cond)) { printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT \"" __FILE__ "::%s\" LINE %d\n", __FUNCTION__, __LINE__); abort(); }
 
 
 #define OUT
@@ -69,6 +69,12 @@ typedef struct
 {
 	float x, y, w, h;
 } rect2f_t;
+
+typedef struct
+{
+	size_t begin, end;
+} rangei_t;
+
 
 // includs edges
 static inline float clampf(float value, float min, float max)
