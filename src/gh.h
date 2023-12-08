@@ -1,4 +1,6 @@
 #pragma once
+#define UNICODE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -41,7 +43,7 @@ typedef char nchar_t;
 #define WIN_API(func) func## A
 #endif
 
-#define ASSERT(cond) if (!(cond)) { printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT \"" __FILE__ "::%s\" LINE %d\n", __FUNCTION__, __LINE__); abort(); }
+#define ASSERT(cond) if (!(cond)) { (void)printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT " __FILE__ ":%d AT FUNC %s\n", __LINE__, __FUNCTION__); (void)fflush(stdout); abort(); }
 
 
 #define OUT
@@ -137,13 +139,13 @@ static inline void str_psplit_2(const nchar_t *str, size_t splitpoint, OUT nchar
 
 	if (left)
 	{
-		memcpy(left, str, splitpoint * sizeof(nchar_t));
+		(void)memcpy(left, str, splitpoint * sizeof(nchar_t));
 		left[splitpoint] = 0;
 	}
 
 	if (right)
 	{
-		memcpy(right, str + splitpoint, len - splitpoint);
+		(void)memcpy(right, str + splitpoint, (len - splitpoint) * sizeof(nchar_t));
 		right[len - splitpoint] = 0;
 	}
 }

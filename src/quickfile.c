@@ -49,7 +49,7 @@ QF_stats_t qf_get_stats(const nchar_t* path)
 		}
 		else
 		{
-			nc_sprintf_s(g_last_error, QF_ErrorLen, "Win32 Error ID %d", err);
+			nc_sprintf_s(g_last_error, QF_ErrorLen, STR("Win32 Error ID %d"), err);
 			state.flags = QF_Error;
 		}
 		return state;

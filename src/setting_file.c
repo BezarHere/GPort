@@ -10,7 +10,7 @@
 typedef char stgf_char_t;
 
 static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
-#define STGF_PARSE_ERR(msg) ((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %d:%d: " msg "\n"), cur_line, i - cur_line_begin))
+#define STGF_PARSE_ERR(msg) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), cur_line, i - cur_line_begin)); nc_printf(g_ErrorStr); }
 
 typedef struct
 {
@@ -43,6 +43,23 @@ static inline void nchar_to_stgf_char_c(stgf_char_t *dst, const nchar_t *const s
 
 	for (size_t i = 0; i < src_len; i++)
 		dst[i] = (stgf_char_t)src[i];
+}
+
+static inline bool stgf_is_digit(const stgf_char_t c)
+{
+	return (stgf_char_t)'0' <= c && c <= (stgf_char_t)'9';
+}
+
+static inline bool stgf_is_whitespace(const stgf_char_t c)
+{
+	/// NOTE: MAY BUG
+	return c <= (stgf_char_t)' ';
+}
+
+static inline bool stgf_is_letter(const stgf_char_t c)
+{
+	/// FIXME: if setting files supported unicode, a-z won't suffice
+	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 }
 
 static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const size_t str_n, size_t cur_line, size_t cur_line_begin)
@@ -97,27 +114,9 @@ static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const s
 	return range;
 }
 
-static inline bool stgf_is_digit(const stgf_char_t c)
-{
-	return (stgf_char_t)'0' <= c && c <= (stgf_char_t)'9';
-}
-
-static inline bool stgf_is_whitespace(const stgf_char_t c)
-{
-	/// NOTE: MAY BUG
-	return c <= (stgf_char_t)' ';
-}
-
-static inline bool stgf_is_letter(const stgf_char_t c)
-{
-	/// FIXME: if setting files supported unicode, a-z won't suffice
-	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
-}
 
 static inline stgf_KeyValueSector_t stgf_new_sector(size_t capacity)
 {
-	// might be bugged
-	ASSERT(!(capacity & (size_t)-1));
 
 	stgf_KeyValueSector_t sector;
 	sector._cap = capacity;
@@ -150,7 +149,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 
 	stgf_KeyValueSector_t kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
 	
-	const stgf_char_t *key_p = NULL;
+	size_t key_index = 0;
 	size_t key_ln = 0;
 
 	bool expecting_value = false;
@@ -169,7 +168,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			}
 
 			// no equal sigen in line, only a key
-			if (key_p)
+			if (key_ln)
 			{
 				STGF_PARSE_ERR("Standalone key");
 				break;
@@ -187,6 +186,14 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 		// not a whitespace and expecting value, parse it
 		if (expecting_value)
 		{
+			printf("expecting value at %lld\n", i);
+
+			// full sector slots, create the new one
+			if (kv_sector.slots == STGF_SECTOR_LEN)
+			{
+				kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
+			}
+
 			const stgf_char_t *current_str_pos = str + i;
 
 			// the value string start and end
@@ -206,7 +213,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			nchar_t *const key_slot = kv_sector.data + kv_sector.size;
 			nchar_t *const value_slot = key_slot + key_ln + 1;
 
-			stgf_char_to_nchar_c(key_slot, key_p, key_ln);
+			stgf_char_to_nchar_c(key_slot, str + key_index, key_ln);
 			key_slot[key_ln] = 0;
 
 			stgf_char_to_nchar_c(value_slot, current_str_pos + value_range.begin, value_ln);
@@ -226,18 +233,17 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 				setting->values = realloc(setting->values, values_cap);
 				ASSERT(setting->values != NULL);
 			}
-			
-			// full sector slots, create the new one
-			if (kv_sector.slots == STGF_SECTOR_LEN)
-			{
-				kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
-			}
 
-			i += value_range.end;
+			// clearing
+			key_ln = 0;
+			key_index = 0;
+			expecting_value = false;
+
+			i += value_range.end - 1;
 			continue;
 		}
 		
-		if (key_p)
+		if (key_ln)
 		{
 			if (str[i] != (stgf_char_t)'=')
 				STGF_PARSE_ERR("Expected '=' after key");
@@ -250,11 +256,15 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 
 		// read key
 		rangei_t key_range = stgf_get_literal_strrange(str + i, src_n - i, cur_line, cur_line_begin);
-		key_p = str + (i + key_range.begin);
+		key_index = i + key_range.begin;
 		key_ln = key_range.end - key_range.begin;
 
-		i += key_range.end;
+		i += key_range.end - 1;
 	}
+
+	// no values, free the kv sector created before the parsing
+	if (setting->values_ln == 0)
+		free(kv_sector.data);
 
 }
 
@@ -312,4 +322,9 @@ SettingFile_t stgf_fread(const nchar_t *src)
 
 void stgf_close(SettingFile_t* stgf)
 {
+	for (size_t i = 0; i < stgf->values_ln; i += STGF_SECTOR_LEN)
+	{
+		free(stgf->values[i].key); // free sector
+	}
+	free(stgf->values);
 }

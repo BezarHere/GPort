@@ -2,6 +2,7 @@
 #include "main.h"
 #include "dirscan.h"
 #include "path.h"
+#include "setting_file.h"
 #include "os/win32.h"
 
 static inline void run_process(nchar_t* args)
@@ -42,16 +43,21 @@ int main(int argc, char* argv[])
 		printf("quickfile flags: %d\n", state.flags);
 	printf("quickfile size: %lld\n", state.size);
 	printf("quickfile ct: %lld\n", state.creation_time);
+	FILE *fp = fopen("F:\\Assets\\gcc\\GPort\\test.stgf", "r");
 
 	for (size_t i = 0; i < 1; i++)
 	{
-		path_t ppath = path_create(path);
-		nchar_t* parent = path_parent(&ppath), * filename = path_filename(&ppath), * extn = path_extension(&ppath);
-		// nc_printf(STR("parent: \"%s\", filename: '%s', ext: '%s'\n"), parent, filename, extn);
-		free(parent);
-		free(filename);
-		free(extn);
-		path_close(&ppath);
+		SettingFile_t st = stgf_fload(fp);
+		stgf_close(&st);
+		fseek(fp, 0, SEEK_SET);
+
+		// path_t ppath = path_create(path);
+		// nchar_t* parent = path_parent(&ppath), * filename = path_filename(&ppath), * extn = path_extension(&ppath);
+		// // nc_printf(STR("parent: \"%s\", filename: '%s', ext: '%s'\n"), parent, filename, extn);
+		// free(parent);
+		// free(filename);
+		// free(extn);
+		// path_close(&ppath);
 
 
 		// size_t count;

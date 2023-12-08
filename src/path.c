@@ -40,7 +40,7 @@ static inline nchar_t *path_flatten_ranged(const path_t *path, const size_t star
 {
 	const size_t path_len = path_segments_len(path, start_seg, end_seg);
 
-	nchar_t *str = malloc(sizeof(nchar_t) * (path_len + 1));
+	nchar_t *str = calloc(path_len + 1, sizeof(nchar_t));
 	ASSERT(str != NULL);
 
 	nchar_t *dst_str = str;
@@ -161,7 +161,12 @@ nchar_t *path_file(const path_t *path)
 
 nchar_t *path_filename(const path_t *path)
 {
+	if (path->_segments_count == 0)
+		return NULL;
+
 	nchar_t *filebasename = path_file(path);
+	ASSERT(filebasename != NULL);
+
 	nchar_t *last_point = nc_strrchr(filebasename, (nchar_t)'.');
 	
 	// no extension, all filename
@@ -171,7 +176,8 @@ nchar_t *path_filename(const path_t *path)
 	if (last_point == filebasename)
 		return NULL;
 
-	nchar_t *filename = malloc(((last_point - filebasename) + 1) * sizeof(nchar_t));
+	const size_t filename_len = (last_point - filebasename);
+	nchar_t *filename = malloc((filename_len + 1) * sizeof(nchar_t));
 	ASSERT(filename != NULL);
 
 	str_psplit_2(filebasename, last_point - filebasename, filename, NULL);
@@ -183,6 +189,9 @@ nchar_t *path_filename(const path_t *path)
 
 nchar_t *path_extension(const path_t *path)
 {
+	if (path->_segments_count == 0)
+		return NULL;
+	
 	nchar_t *filebasename = path_file(path);
 	nchar_t *last_point = nc_strrchr(filebasename, (nchar_t)'.');
 	
@@ -194,7 +203,7 @@ nchar_t *path_extension(const path_t *path)
 
 	const size_t flen = nc_strlen(filebasename);
 
-	nchar_t *extension = malloc(flen - ((last_point - filebasename) + 1) + 1);
+	nchar_t *extension = malloc((flen - ((last_point - filebasename) + 1) + 1) * sizeof(nchar_t));
 	ASSERT(extension != NULL);
 
 	str_psplit_2(filebasename, (last_point - filebasename) + 1, NULL, extension);
