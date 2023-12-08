@@ -20,7 +20,7 @@ typedef wchar_t nchar_t;
 #define nc_strlen(str) (wcslen(str))
 #define nc_strlen_s(str, max_l) (wcsnlen(str, max_l))
 #define nc_sprintf _swprintf
-#define nc_sprintf_s swprintf
+#define nc_sprintf_s swprintf_s
 #define nc_strcpy(dst, src) wcscpy(dst, src)
 #define nc_strcpy_s(dst, dst_len, src) wcscpy_s(dst, dst_len, src)
 #define nc_strchr(str, chr) wcschr(str, chr)

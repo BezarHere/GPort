@@ -10,7 +10,9 @@
 typedef char stgf_char_t;
 
 static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
-#define STGF_PARSE_ERR(msg) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), cur_line, i - cur_line_begin)); nc_printf(g_ErrorStr); }
+
+/// TODO: make this more strict
+#define STGF_PARSE_ERR(msg, line, column) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), line, column)); nc_printf(g_ErrorStr); }
 
 typedef struct
 {
@@ -62,7 +64,7 @@ static inline bool stgf_is_letter(const stgf_char_t c)
 	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z');
 }
 
-static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const size_t str_n, size_t cur_line, size_t cur_line_begin)
+static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const size_t str_n, size_t cur_line, size_t cur_column)
 {
 	rangei_t range = {0};
 	bool in_qouts = false;
@@ -78,6 +80,7 @@ static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const s
 
 		if (str[i] == (stgf_char_t)'"')
 		{
+
 			// found closing qout
 			if (in_qouts)
 				break;
@@ -85,7 +88,7 @@ static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const s
 			// last char is double qouts, error
 			if (i == str_n - 1)
 			{
-				STGF_PARSE_ERR("No closing qoute (EOF)");
+				STGF_PARSE_ERR("No closing qoute (EOF)", cur_line, cur_column + i);
 				break;
 			}
 
@@ -98,7 +101,7 @@ static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const s
 		{
 			if (str[i] == (stgf_char_t)'\n')
 			{
-				STGF_PARSE_ERR("Qouts left open");
+				STGF_PARSE_ERR("Qouts left open", cur_line, cur_column + i);
 				break;
 			}
 			continue;
@@ -163,14 +166,14 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			// no value after equal sigen in line
 			if (expecting_value)
 			{
-				STGF_PARSE_ERR("Expecting value");
+				STGF_PARSE_ERR("Expecting value", cur_line, i - cur_line_begin);
 				break;
 			}
 
 			// no equal sigen in line, only a key
 			if (key_ln)
 			{
-				STGF_PARSE_ERR("Standalone key");
+				STGF_PARSE_ERR("Standalone key", cur_line, i - cur_line_begin);
 				break;
 			}
 
@@ -186,8 +189,6 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 		// not a whitespace and expecting value, parse it
 		if (expecting_value)
 		{
-			printf("expecting value at %lld\n", i);
-
 			// full sector slots, create the new one
 			if (kv_sector.slots == STGF_SECTOR_LEN)
 			{
@@ -197,7 +198,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			const stgf_char_t *current_str_pos = str + i;
 
 			// the value string start and end
-			rangei_t value_range = stgf_get_literal_strrange(current_str_pos, src_n - i, cur_line, cur_line_begin);
+			rangei_t value_range = stgf_get_literal_strrange(current_str_pos, src_n - i, cur_line, i - cur_line_begin);
 			const size_t value_ln = value_range.end - value_range.begin;
 
 			// value and key string sizes (+ their terminating nulls)
@@ -239,14 +240,14 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			key_index = 0;
 			expecting_value = false;
 
-			i += value_range.end - 1;
+			i += value_range.end;
 			continue;
 		}
 		
 		if (key_ln)
 		{
 			if (str[i] != (stgf_char_t)'=')
-				STGF_PARSE_ERR("Expected '=' after key");
+				STGF_PARSE_ERR("Expected '=' after key", cur_line, i - cur_line_begin);
 			
 			// now, get a value
 			expecting_value = true;
@@ -255,11 +256,11 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 		}
 
 		// read key
-		rangei_t key_range = stgf_get_literal_strrange(str + i, src_n - i, cur_line, cur_line_begin);
+		rangei_t key_range = stgf_get_literal_strrange(str + i, src_n - i, cur_line, i - cur_line_begin);
 		key_index = i + key_range.begin;
 		key_ln = key_range.end - key_range.begin;
 
-		i += key_range.end - 1;
+		i += key_range.end;
 	}
 
 	// no values, free the kv sector created before the parsing
@@ -325,6 +326,8 @@ void stgf_close(SettingFile_t* stgf)
 	for (size_t i = 0; i < stgf->values_ln; i += STGF_SECTOR_LEN)
 	{
 		free(stgf->values[i].key); // free sector
+		stgf->values[i].key = NULL;
 	}
 	free(stgf->values);
+	stgf->values = NULL;
 }
