@@ -1,5 +1,7 @@
 #include "setting_file.h"
-#include "malloc.h"
+#include <malloc.h>
+#include <math.h>
+#include <stdbool.h>
 
 #define STGF_ERROR_STR_N 255
 #define STGF_SECTOR_LEN 16
@@ -14,9 +16,34 @@ typedef struct
 {
 	size_t _cap;
 	size_t slots; // kv pairs currently set
-	size_t size;
-	stgf_char_t *data;
+	size_t size; // in stgf_char_t
+	nchar_t *data;
 } stgf_KeyValueSector_t;
+
+
+static inline void stgf_char_to_nchar_c(nchar_t *dst, const stgf_char_t *const src, const size_t src_len)
+{
+	if (sizeof(nchar_t) == sizeof(stgf_char_t))
+	{
+		memcpy(dst, src, src_len * sizeof(stgf_char_t));
+		return;
+	}
+
+	for (size_t i = 0; i < src_len; i++)
+		dst[i] = (nchar_t)src[i];
+}
+
+static inline void nchar_to_stgf_char_c(stgf_char_t *dst, const nchar_t *const src, const size_t src_len)
+{
+	if (sizeof(nchar_t) == sizeof(stgf_char_t))
+	{
+		memcpy(dst, src, src_len * sizeof(nchar_t));
+		return;
+	}
+
+	for (size_t i = 0; i < src_len; i++)
+		dst[i] = (stgf_char_t)src[i];
+}
 
 static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const size_t str_n, size_t cur_line, size_t cur_line_begin)
 {
@@ -95,7 +122,7 @@ static inline stgf_KeyValueSector_t stgf_new_sector(size_t capacity)
 	stgf_KeyValueSector_t sector;
 	sector._cap = capacity;
 	sector.slots = 0;
-	sector.data = calloc(capacity, sizeof(stgf_char_t));
+	sector.data = calloc(capacity, sizeof(nchar_t));
 	sector.size = 0;
 	
 	ASSERT(sector.data != NULL);
@@ -105,7 +132,7 @@ static inline stgf_KeyValueSector_t stgf_new_sector(size_t capacity)
 
 static inline void stgf_expand_sector(stgf_KeyValueSector_t *sector, size_t new_capacity)
 {
-	sector->data = realloc(sector->data, new_capacity * sizeof(stgf_char_t));
+	sector->data = realloc(sector->data, new_capacity * sizeof(nchar_t));
 	ASSERT(sector->data != NULL);
 	
 	memset(sector->data + sector->_cap, 0, new_capacity - sector->_cap);
@@ -123,8 +150,8 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 
 	stgf_KeyValueSector_t kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
 	
-	const stgf_char_t *src_ky = NULL;
-	size_t src_ky_ln = 0;
+	const stgf_char_t *key_p = NULL;
+	size_t key_ln = 0;
 
 	bool expecting_value = false;
 	size_t cur_line = 0, cur_line_begin = 0;
@@ -142,7 +169,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			}
 
 			// no equal sigen in line, only a key
-			if (src_ky)
+			if (key_p)
 			{
 				STGF_PARSE_ERR("Standalone key");
 				break;
@@ -160,7 +187,38 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 		// not a whitespace and expecting value, parse it
 		if (expecting_value)
 		{
+			const stgf_char_t *current_str_pos = str + i;
+
+			// the value string start and end
+			rangei_t value_range = stgf_get_literal_strrange(current_str_pos, src_n - i, cur_line, cur_line_begin);
+			const size_t value_ln = value_range.end - value_range.begin;
+
+			// value and key string sizes (+ their terminating nulls)
+			const size_t kv_slot_size = value_ln + key_ln + 2;
+			const size_t sector_space = kv_sector._cap - kv_sector.size;
+
+			// keyvalue pair is too long to be saved, Expand
+			if (kv_slot_size > sector_space)
+			{
+				stgf_expand_sector(&kv_sector, imaxll(kv_sector._cap * 2, kv_slot_size));
+			}
 			
+			nchar_t *const key_slot = kv_sector.data + kv_sector.size;
+			nchar_t *const value_slot = key_slot + key_ln + 1;
+
+			stgf_char_to_nchar_c(key_slot, key_p, key_ln);
+			key_slot[key_ln] = 0;
+
+			stgf_char_to_nchar_c(value_slot, current_str_pos + value_range.begin, value_ln);
+			value_slot[value_ln] = 0;
+
+			// advance secotr
+			kv_sector.size += kv_slot_size;
+			kv_sector.slots++;
+
+			setting->values[setting->values_ln].key = key_slot;
+			setting->values[setting->values_ln].value = value_slot;
+			setting->values_ln++;
 
 			if (setting->values_ln == values_cap)
 			{
@@ -168,35 +226,34 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 				setting->values = realloc(setting->values, values_cap);
 				ASSERT(setting->values != NULL);
 			}
-
+			
 			// full sector slots, create the new one
 			if (kv_sector.slots == STGF_SECTOR_LEN)
 			{
 				kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
 			}
-			// full sector with more kv pairs to load, expand
-			else if (kv_sector.size == kv_sector._cap)
-			{
-				stgf_expand_sector(&kv_sector, kv_sector._cap * 2);
-			}
 
+			i += value_range.end;
 			continue;
 		}
 		
-		if (src_ky)
+		if (key_p)
 		{
-			if (str[i] == (stgf_char_t)'=')
-			{
-				// now, get a value
-				expecting_value = true;
-			}
+			if (str[i] != (stgf_char_t)'=')
+				STGF_PARSE_ERR("Expected '=' after key");
+			
+			// now, get a value
+			expecting_value = true;
 
 			continue;
 		}
 
 		// read key
+		rangei_t key_range = stgf_get_literal_strrange(str + i, src_n - i, cur_line, cur_line_begin);
+		key_p = str + (i + key_range.begin);
+		key_ln = key_range.end - key_range.begin;
 
-		
+		i += key_range.end;
 	}
 
 }

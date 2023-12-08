@@ -77,7 +77,7 @@ typedef struct
 
 
 // includs edges
-static inline float clampf(float value, float min, float max)
+static inline float fclampf(float value, float min, float max)
 {
 	if (value > min)
 		return value < max ? value : max;
@@ -85,7 +85,7 @@ static inline float clampf(float value, float min, float max)
 }
 
 // includs edges
-static inline double clampd(double value, double min, double max)
+static inline double fclampd(double value, double min, double max)
 {
 	if (value > min)
 		return value < max ? value : max;
@@ -93,11 +93,39 @@ static inline double clampd(double value, double min, double max)
 }
 
 // includes min, excludes max
-static inline int clampi(int value, int min, int max)
+static inline int iclampi(int value, int min, int max)
 {
 	if (value > min)
 		return value < max ? value : max - 1;
 	return min;
+}
+
+// includes min, excludes max
+static inline long long iclampll(long long value, long long min, long long max)
+{
+	if (value > min)
+		return value < max ? value : max - 1;
+	return min;
+}
+
+static inline int imini(int a, int b)
+{
+	return a > b ? b : a;
+}
+
+static inline long long iminll(long long a, long long b)
+{
+	return a > b ? b : a;
+}
+
+static inline int imaxi(int a, int b)
+{
+	return a < b ? b : a;
+}
+
+static inline long long imaxll(long long a, long long b)
+{
+	return a < b ? b : a;
 }
 
 
