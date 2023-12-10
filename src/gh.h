@@ -44,6 +44,7 @@ typedef char nchar_t;
 #endif
 
 #define ASSERT(cond) if (!(cond)) { (void)printf("FAILED ASSERTION OF CONDITION \"" #cond "\" AT " __FILE__ ":%d AT FUNC %s\n", __LINE__, __FUNCTION__); (void)fflush(stdout); abort(); }
+#define ERR_MSG(msg) { (void)printf("ERROR: \"%s\" AT " __FILE__ ":%d AT FUNC %s\n", msg, __LINE__, __FUNCTION__); (void)fflush(stdout); abort(); }
 
 
 #define OUT
@@ -150,3 +151,44 @@ static inline void str_psplit_2(const nchar_t *str, size_t splitpoint, OUT nchar
 	}
 }
 
+// index of the last '1' bit in value (index -1 if value == 0)
+static inline int bit_rangei(int value)
+{
+	// no way this is reached
+	for (int i = 0; i < sizeof(int) * 8; i++)
+	{
+		if (value >> i)
+			continue;
+		return i - 1;
+	}
+	ERR_MSG("Unreachable branch");
+	return -1;
+}
+
+// index of the last '1' bit in value (index -1 if value == 0)
+static inline int bit_rangell(long long value)
+{
+	// no way this is reached
+	for (long long i = 0; i < sizeof(long long) * 8; i++)
+	{
+		if (value >> i)
+			continue;
+		return i - 1;
+	}
+	ERR_MSG("Unreachable branch");
+	return -1;
+}
+
+// index of the last '1' bit in value (index -1 if value == 0)
+static inline int bit_rangeull(unsigned long long value)
+{
+	// no way this is reached
+	for (unsigned long long i = 0; i < sizeof(unsigned long long) * 8; i++)
+	{
+		if (value >> i)
+			continue;
+		return i - 1;
+	}
+	ERR_MSG("Unreachable branch");
+	return -1;
+}

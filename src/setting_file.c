@@ -7,20 +7,24 @@
 #define STGF_SECTOR_LEN 16
 #define STGF_DEFAULT_SECTOR_CAP (STGF_SECTOR_LEN * 18)
 
-typedef char stgf_char_t;
-
-static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
-
-/// TODO: make this more strict
-#define STGF_PARSE_ERR(msg, line, column) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), line, column)); nc_printf(g_ErrorStr); }
-
-typedef struct
+typedef struct stgf_KeyValueSector
 {
 	size_t _cap;
 	size_t slots; // kv pairs currently set
 	size_t size; // in stgf_char_t
 	nchar_t *data;
 } stgf_KeyValueSector_t;
+
+typedef struct stgf_KeyValueSectorGroup
+{
+	size_t _cap, size;
+	stgf_KeyValueSector_t *sectors;
+} stgf_KeyValueSectorGroup_t;
+
+static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
+
+/// TODO: make this more strict
+#define STGF_PARSE_ERR(msg, line, column) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), line, column)); nc_printf(g_ErrorStr); }
 
 
 static inline void stgf_char_to_nchar_c(nchar_t *dst, const stgf_char_t *const src, const size_t src_len)
@@ -141,6 +145,22 @@ static inline void stgf_expand_sector(stgf_KeyValueSector_t *sector, size_t new_
 	sector->_cap = new_capacity;
 }
 
+static inline size_t stgf_get_sectors_count(const SettingFile_t *setting)
+{
+	size_t i = setting->values_ln / STGF_SECTOR_LEN;
+	return i + ((i * STGF_SECTOR_LEN == setting->values_ln) ? 0 : 1);
+}
+
+static inline stgf_KeyValueSector_t stgf_get_last_sector(const SettingFile_t *setting)
+{
+	stgf_KeyValueSector_t sector = {0};
+	if (setting->values_ln == 0)
+		return sector;
+	
+	size_t sectors_count = stgf_get_sectors_count(setting);
+	sector.data = setting->values[(sectors_count - 1) * STGF_SECTOR_LEN].key;
+	sector._cap
+}
 
 static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, SettingFile_t *setting)
 {
@@ -208,8 +228,17 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 			// keyvalue pair is too long to be saved, Expand
 			if (kv_slot_size > sector_space)
 			{
-				stgf_expand_sector(&kv_sector, imaxll(kv_sector._cap * 2, kv_slot_size));
+				size_t new_cap = kv_sector._cap * 2;
+				while (new_cap - kv_sector.size < kv_slot_size)
+				{
+					new_cap *= 2;
+					ASSERT(new_cap < (1 << 31));
+				}
+
+				stgf_expand_sector(&kv_sector, new_cap);
 			}
+
+			stgf_add_n(setting, key_index + str, value_range.begin + str);
 			
 			nchar_t *const key_slot = kv_sector.data + kv_sector.size;
 			nchar_t *const value_slot = key_slot + key_ln + 1;
@@ -269,7 +298,7 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 
 }
 
-SettingFile_t stgf_fload(FILE *f)
+SettingFile_t stgf_fread(FILE *f)
 {
 	const long long flen = fend(f);
 	stgf_char_t *str = malloc((flen + 1) * sizeof(stgf_char_t));
@@ -292,7 +321,7 @@ SettingFile_t stgf_fload(FILE *f)
 	return st;
 }
 
-SettingFile_t stgf_fread(const nchar_t *src)
+SettingFile_t stgf_read(const nchar_t *src)
 {
 	const size_t src_len = nc_strlen(src);
 	const void *src_v = src;
@@ -330,4 +359,23 @@ void stgf_close(SettingFile_t* stgf)
 	}
 	free(stgf->values);
 	stgf->values = NULL;
+}
+
+void stgf_fwrite(SettingFile_t *stgf, FILE *fp)
+{
+
+}
+
+stgf_char_t *stgf_get(const SettingFile_t *stgf)
+{
+
+}
+
+void stgf_add(SettingFile_t* stgf, const nchar_t* key, const nchar_t* value)
+{
+}
+
+void stgf_add_n(SettingFile_t *stgf, const stgf_char_t *key, const stgf_char_t *value)
+{
+	
 }
