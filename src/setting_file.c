@@ -3,30 +3,19 @@
 #include <math.h>
 #include <stdbool.h>
 
+
 #define STGF_ERROR_STR_N 255
-#define STGF_SECTOR_LEN 16
 #define STGF_DEFAULT_SECTOR_CAP (STGF_SECTOR_LEN * 18)
 
-typedef struct stgf_KeyValueSector
-{
-	size_t _cap;
-	size_t slots; // kv pairs currently set
-	size_t size; // in stgf_char_t
-	nchar_t *data;
-} stgf_KeyValueSector_t;
+typedef struct stgf_KeyValuePoolPair stgf_KeyValuePoolPair_t;
 
-typedef struct stgf_KeyValueSectorGroup
-{
-	size_t _cap, size;
-	stgf_KeyValueSector_t *sectors;
-} stgf_KeyValueSectorGroup_t;
 
 static nchar_t g_ErrorStr[STGF_ERROR_STR_N + 1] = {0};
 
 /// TODO: make this more strict
 #define STGF_PARSE_ERR(msg, line, column) {((void)nc_sprintf_s(g_ErrorStr, STGF_ERROR_STR_N, STR("STGF_PARSE_ERR AT %lld:%lld: " msg "\n"), line, column)); nc_printf(g_ErrorStr); }
 
-
+/// @note Doesn't set a null termination 
 static inline void stgf_char_to_nchar_c(nchar_t *dst, const stgf_char_t *const src, const size_t src_len)
 {
 	if (sizeof(nchar_t) == sizeof(stgf_char_t))
@@ -39,6 +28,7 @@ static inline void stgf_char_to_nchar_c(nchar_t *dst, const stgf_char_t *const s
 		dst[i] = (nchar_t)src[i];
 }
 
+/// @note Doesn't set a null termination
 static inline void nchar_to_stgf_char_c(stgf_char_t *dst, const nchar_t *const src, const size_t src_len)
 {
 	if (sizeof(nchar_t) == sizeof(stgf_char_t))
@@ -121,47 +111,6 @@ static inline rangei_t stgf_get_literal_strrange(const stgf_char_t *str, const s
 	return range;
 }
 
-
-static inline stgf_KeyValueSector_t stgf_new_sector(size_t capacity)
-{
-
-	stgf_KeyValueSector_t sector;
-	sector._cap = capacity;
-	sector.slots = 0;
-	sector.data = calloc(capacity, sizeof(nchar_t));
-	sector.size = 0;
-	
-	ASSERT(sector.data != NULL);
-
-	return sector;
-}
-
-static inline void stgf_expand_sector(stgf_KeyValueSector_t *sector, size_t new_capacity)
-{
-	sector->data = realloc(sector->data, new_capacity * sizeof(nchar_t));
-	ASSERT(sector->data != NULL);
-	
-	memset(sector->data + sector->_cap, 0, new_capacity - sector->_cap);
-	sector->_cap = new_capacity;
-}
-
-static inline size_t stgf_get_sectors_count(const SettingFile_t *setting)
-{
-	size_t i = setting->values_ln / STGF_SECTOR_LEN;
-	return i + ((i * STGF_SECTOR_LEN == setting->values_ln) ? 0 : 1);
-}
-
-static inline stgf_KeyValueSector_t stgf_get_last_sector(const SettingFile_t *setting)
-{
-	stgf_KeyValueSector_t sector = {0};
-	if (setting->values_ln == 0)
-		return sector;
-	
-	size_t sectors_count = stgf_get_sectors_count(setting);
-	sector.data = setting->values[(sectors_count - 1) * STGF_SECTOR_LEN].key;
-	sector._cap
-}
-
 static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, SettingFile_t *setting)
 {
 	size_t values_cap = 32;
@@ -170,8 +119,10 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 	setting->values = calloc(values_cap, sizeof(*setting->values));
 	ASSERT(setting->values != NULL);
 
-	stgf_KeyValueSector_t kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
-	
+	struct NCArray *keys_pool = &setting->__pools.keys, *values_pool = &setting->__pools.values;
+	nc_init_arr(keys_pool);
+	nc_init_arr(values_pool);
+
 	size_t key_index = 0;
 	size_t key_ln = 0;
 
@@ -209,54 +160,25 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 		// not a whitespace and expecting value, parse it
 		if (expecting_value)
 		{
-			// full sector slots, create the new one
-			if (kv_sector.slots == STGF_SECTOR_LEN)
-			{
-				kv_sector = stgf_new_sector(STGF_DEFAULT_SECTOR_CAP);
-			}
-
 			const stgf_char_t *current_str_pos = str + i;
 
 			// the value string start and end
 			rangei_t value_range = stgf_get_literal_strrange(current_str_pos, src_n - i, cur_line, i - cur_line_begin);
 			const size_t value_ln = value_range.end - value_range.begin;
 
-			// value and key string sizes (+ their terminating nulls)
-			const size_t kv_slot_size = value_ln + key_ln + 2;
-			const size_t sector_space = kv_sector._cap - kv_sector.size;
-
-			// keyvalue pair is too long to be saved, Expand
-			if (kv_slot_size > sector_space)
-			{
-				size_t new_cap = kv_sector._cap * 2;
-				while (new_cap - kv_sector.size < kv_slot_size)
-				{
-					new_cap *= 2;
-					ASSERT(new_cap < (1 << 31));
-				}
-
-				stgf_expand_sector(&kv_sector, new_cap);
-			}
-
-			stgf_add_n(setting, key_index + str, value_range.begin + str);
+			// where the key and value string start
+			nchar_t *key_pslot = keys_pool->data + keys_pool->size;
+			nchar_t *value_pslot = values_pool->data + values_pool->size;
 			
-			nchar_t *const key_slot = kv_sector.data + kv_sector.size;
-			nchar_t *const value_slot = key_slot + key_ln + 1;
+			// add the key and the value
+			stgf_add_ns(setting, key_index + str, key_ln, value_range.begin + str, value_ln);
 
-			stgf_char_to_nchar_c(key_slot, str + key_index, key_ln);
-			key_slot[key_ln] = 0;
-
-			stgf_char_to_nchar_c(value_slot, current_str_pos + value_range.begin, value_ln);
-			value_slot[value_ln] = 0;
-
-			// advance secotr
-			kv_sector.size += kv_slot_size;
-			kv_sector.slots++;
-
-			setting->values[setting->values_ln].key = key_slot;
-			setting->values[setting->values_ln].value = value_slot;
+			// setting the entry
+			setting->values[setting->values_ln].key = key_pslot;
+			setting->values[setting->values_ln].value = value_pslot;
 			setting->values_ln++;
 
+			// expand if data is full
 			if (setting->values_ln == values_cap)
 			{
 				values_cap *= 2;
@@ -291,18 +213,12 @@ static inline void stgf_parse(const stgf_char_t *str, const size_t src_n, Settin
 
 		i += key_range.end;
 	}
-
-	// no values, free the kv sector created before the parsing
-	if (setting->values_ln == 0)
-		free(kv_sector.data);
-
 }
 
 SettingFile_t stgf_fread(FILE *f)
 {
 	const long long flen = fend(f);
-	stgf_char_t *str = malloc((flen + 1) * sizeof(stgf_char_t));
-	str[flen] = 0;
+	stgf_char_t *str = calloc(flen + 1, sizeof(stgf_char_t));
 
 	size_t read_bytes = fread_s(str, flen, sizeof(stgf_char_t), flen, f);
 	
@@ -328,7 +244,7 @@ SettingFile_t stgf_read(const nchar_t *src)
 	const bool owened_src = sizeof(stgf_char_t) != sizeof(*src); 
 	void *owened_ptr = NULL;
 
-	// For if nchar_t is wide string and stgf_char_t is a char or vice versa
+	// if nchar_t and stgf_char_t aren't compatible
 	if (owened_src)
 	{
 		stgf_char_t *stgf_str = malloc(sizeof(stgf_char_t) * (src_len + 1));
@@ -352,30 +268,147 @@ SettingFile_t stgf_read(const nchar_t *src)
 
 void stgf_close(SettingFile_t* stgf)
 {
-	for (size_t i = 0; i < stgf->values_ln; i += STGF_SECTOR_LEN)
-	{
-		free(stgf->values[i].key); // free sector
-		stgf->values[i].key = NULL;
-	}
+	free(stgf->__pools.keys.data);
+	stgf->__pools.keys._cap = 0;
+	stgf->__pools.keys.data = NULL;
+
+	free(stgf->__pools.values.data);
+	stgf->__pools.values._cap = 0;
+	stgf->__pools.values.data = NULL;
+
 	free(stgf->values);
 	stgf->values = NULL;
 }
 
-void stgf_fwrite(SettingFile_t *stgf, FILE *fp)
+void stgf_fwrite(const SettingFile_t *stgf, FILE *fp)
 {
+	size_t repr_len;
+	nchar_t *repr = stgf_repr(stgf, &repr_len);
+	stgf_char_t *sstr = calloc(repr_len, sizeof(stgf_char_t));
+	ASSERT(sstr != NULL);
 
-}
-
-stgf_char_t *stgf_get(const SettingFile_t *stgf)
-{
-
-}
-
-void stgf_add(SettingFile_t* stgf, const nchar_t* key, const nchar_t* value)
-{
-}
-
-void stgf_add_n(SettingFile_t *stgf, const stgf_char_t *key, const stgf_char_t *value)
-{
+	nchar_to_stgf_char_c(sstr, repr, repr_len);
 	
+	free(repr);
+
+	size_t bytes_written = fwrite(sstr, sizeof(nchar_t), repr_len, fp);
+
+	free(sstr);
+
+	ASSERT(bytes_written == repr_len);
+}
+
+nchar_t *stgf_repr(const SettingFile_t *stgf, size_t *len)
+{
+	struct NCArray arr;
+	nc_init_arr(&arr);
+
+	for (size_t i = 0; i < stgf->values_ln; i++)
+	{
+		const size_t kn = nc_strlen(stgf->values[i].key);
+		const size_t vn = nc_strlen(stgf->values[i].value);
+		const size_t lineln = kn + 4 + vn + 2;
+
+		if (NC_ARR_SPACE(&arr) < lineln)
+			nc_growfor_arr(&arr, lineln);
+		
+		(void)memcpy(arr.data + arr.size, stgf->values[i].key, sizeof(nchar_t) * kn);
+		arr.size += kn;
+
+		arr.data[0] = ' ';
+		arr.data[1] = '=';
+		arr.data[2] = ' ';
+		arr.data[3] = '"';
+
+		arr.size += 4;
+
+		(void)memcpy(arr.data + arr.size, stgf->values[i].value, sizeof(nchar_t) * vn);
+		arr.size += vn;
+
+		arr.data[0] = '"';
+		arr.data[1] = '\n';
+
+		arr.size += 2;
+	}
+
+	if (len)
+	 *len = arr.size;
+	return arr.data;
+}
+
+void stgf_add(SettingFile_t *const stgf, const nchar_t* key, const nchar_t* value)
+{
+#ifdef PARANOID
+	ASSERT(stgf != NULL);
+	ASSERT(key != NULL);
+	ASSERT(value != NULL);
+#endif
+	stgf_KeyValuePoolPair_t *const pool = &stgf->__pools;
+	size_t i; 
+	for (i = 0; key[i]; i++)
+	{
+		if (pool->keys.size == pool->keys._cap)
+			nc_grow_arr(&pool->keys);
+		pool->keys.data[pool->keys.size + i] = key[i];
+	}
+	pool->keys.data[i + pool->keys.size] = 0;
+	pool->keys.size += i + 1; // +1 for null sepration
+	
+	for (i = 0; value[i]; i++)
+	{
+		if (pool->values.size == pool->values._cap)
+			nc_grow_arr(&pool->values);
+		pool->values.data[pool->values.size + i] = value[i];
+	}
+	pool->values.data[i + pool->values.size] = 0;
+	pool->values.size += i + 1; // +1 for null sepration
+}
+
+void stgf_add_s(SettingFile_t *const stgf, const nchar_t* key, const size_t key_n, const nchar_t* value, const size_t value_n)
+{
+#ifdef PARANOID
+	ASSERT(stgf != NULL);
+	ASSERT(key != NULL);
+	ASSERT(value != NULL);
+#endif
+	stgf_KeyValuePoolPair_t *const pool = &stgf->__pools; 
+
+	// expand key pool if it has insufficent space
+	if (NC_ARR_SPACE(&pool->keys) < key_n + 1)
+		nc_growfor_arr(&pool->keys, key_n + 1);
+
+	// expand values pool if it has insufficent space
+	if (NC_ARR_SPACE(&pool->values) < value_n + 1)
+		nc_growfor_arr(&pool->values, value_n + 1);
+	
+	(void)nc_strcpy_s(pool->keys.data + pool->keys.size, key_n, key);
+	(void)nc_strcpy_s(pool->values.data + pool->values.size, value_n, value);
+
+	pool->keys.data[key_n] = pool->values.data[value_n] = 0;
+
+	pool->keys.size += key_n + 1;
+	pool->values.size += value_n + 1;
+}
+
+void stgf_add_ns(SettingFile_t *const stgf, const stgf_char_t* key, const size_t key_n, const stgf_char_t* value, const size_t value_n)
+{
+	if (sizeof(stgf_char_t) == sizeof(nchar_t))
+		return stgf_add_s(stgf, (const nchar_t *)key, key_n, (const nchar_t *)value, value_n);
+	nchar_t *nchar_key = calloc(key_n + 1, sizeof(nchar_t));
+	ASSERT(nchar_key != NULL);
+
+	nchar_t *nchar_value = calloc(value_n + 1, sizeof(nchar_t));
+	ASSERT(nchar_value != NULL);
+
+
+	stgf_char_to_nchar_c(nchar_key, key, key_n);
+	stgf_char_to_nchar_c(nchar_value, value, value_n);
+
+	nchar_key[key_n] = 0;
+	nchar_value[value_n] = 0;
+
+	stgf_add_s(stgf, nchar_key, key_n, nchar_value, value_n);
+
+	free(nchar_key);
+	free(nchar_value);
 }

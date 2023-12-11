@@ -174,10 +174,14 @@ nchar_t *path_filename(const path_t *path)
 		return filebasename;
 
 	if (last_point == filebasename)
+	{
+		free(filebasename);
+		/// FIXME: shouldn't this just return an empty string? (ptr to a null char)
 		return NULL;
+	}
 
 	const size_t filename_len = (last_point - filebasename);
-	nchar_t *filename = malloc((filename_len + 1) * sizeof(nchar_t));
+	nchar_t *filename = calloc((filename_len + 1), sizeof(nchar_t));
 	ASSERT(filename != NULL);
 
 	str_psplit_2(filebasename, last_point - filebasename, filename, NULL);
@@ -195,9 +199,12 @@ nchar_t *path_extension(const path_t *path)
 	nchar_t *filebasename = path_file(path);
 	nchar_t *last_point = nc_strrchr(filebasename, (nchar_t)'.');
 	
+
+
 	// no dot, no extension, all filename OR the dot is the last charecter so no extension too
 	if (last_point == NULL || filebasename[(last_point - filebasename) + 1] == (nchar_t)0)
 	{
+		free(filebasename);
 		return NULL;
 	}
 

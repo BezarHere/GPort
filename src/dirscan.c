@@ -53,7 +53,7 @@ static inline dir_find_entry_t *_scan_dir_win32( size_t depth,
 	WIN32_FIND_DATAW fdfile;
 	HANDLE hfile;
 
-	const size_t dirpath_len = wcslen(dirpath), mask_len = wcslen(mask);
+	const size_t dirpath_len = wcslen(dirpath);
 	wchar_t searchterm[MaxPathSize];
 	wsprintfW(searchterm, L"%s\\%s", dirpath, mask);
 

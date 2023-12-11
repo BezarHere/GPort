@@ -33,7 +33,7 @@ static inline void run_process(nchar_t* args)
 int main(int argc, char* argv[])
 {
 	nc_printf(STR("nchar_t size: %lld\n"), sizeof(nchar_t));
-	const nchar_t* path = "F:\\GameLog.log";
+	const nchar_t* path = STR("F:\\GameLog.log");
 	QF_stats_t state = qf_get_stats(path);
 	if (state.flags & QF_Error)
 	{
@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
 
 	for (size_t i = 0; i < 1; i++)
 	{
-		SettingFile_t st = stgf_fload(fp);
+		SettingFile_t st = stgf_fread(fp);
 		stgf_close(&st);
 		fseek(fp, 0, SEEK_SET);
 

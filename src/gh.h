@@ -18,7 +18,7 @@ typedef wchar_t nchar_t;
 #define STR(s) (L## s)
 #define nc_printf wprintf
 #define nc_strlen(str) (wcslen(str))
-#define nc_strlen_s(str, max_l) (wcsnlen(str, max_l))
+#define nc_strlen_s(str, max_l) (wcsnlen_s(str, max_l))
 #define nc_sprintf _swprintf
 #define nc_sprintf_s swprintf_s
 #define nc_strcpy(dst, src) wcscpy(dst, src)
@@ -32,7 +32,7 @@ typedef char nchar_t;
 #define STR(s) (s)
 #define nc_printf printf
 #define nc_strlen(str) (strlen(str))
-#define nc_strlen_s(str, max_l) (strnlen(str, max_l))
+#define nc_strlen_s(str, max_l) (strnlen_s(str, max_l))
 #define nc_sprintf sprintf
 #define nc_sprintf_s sprintf_s
 #define nc_strcpy(dst, src) strcpy(dst, src)
@@ -50,8 +50,18 @@ typedef char nchar_t;
 #define OUT
 #define INOUT
 
-// #define VERBOSE
+#define NC_ARR_DEFCAP 64
+#define NC_ARR_CAPFAC(cap) ((cap) * 2)
+#define NC_ARR_SPACE(pool) ((pool)->_cap - (pool)->size)
 
+// #define VERBOSE
+// #define PARANOID
+
+struct NCArray
+{
+	size_t _cap, size;
+	nchar_t *data;
+};
 
 typedef struct
 {
@@ -134,6 +144,9 @@ static inline long long imaxll(long long a, long long b)
 
 static inline void str_psplit_2(const nchar_t *str, size_t splitpoint, OUT nchar_t *left, OUT nchar_t *right)
 {
+#ifdef PARANOID
+	ASSERT(str != NULL);
+#endif
 	const size_t len = nc_strlen(str);
 	if (len < splitpoint)
 		splitpoint = len;
@@ -192,3 +205,55 @@ static inline int bit_rangeull(unsigned long long value)
 	ERR_MSG("Unreachable branch");
 	return -1;
 }
+
+static inline void nc_init_arr(struct NCArray *pool)
+{
+#ifdef PARANOID
+	ASSERT(pool != NULL);
+#endif
+	pool->size = 0;
+	pool->_cap = NC_ARR_DEFCAP;
+	pool->data = calloc(pool->_cap, sizeof(nchar_t));
+	ASSERT(pool->data != NULL);
+}
+
+static inline void nc_grow_arr(struct NCArray *pool)
+{
+#ifdef PARANOID
+	ASSERT(pool != NULL);
+	ASSERT(pool._cap != 0);
+#endif
+
+	pool->_cap = NC_ARR_CAPFAC(pool->_cap);
+	void *const p = pool->data;
+	pool->data = realloc(pool->data, pool->_cap * sizeof(nchar_t));
+
+	if (pool->data == NULL)
+	{
+		free(p);
+		ERR_MSG("failed to realloc data");
+	}
+}
+
+/// @brief will expand until the array's space is bigger or equal to req_space
+/// @note will not expand the array if it has sufficent space already, but it will allways reallocate the data
+static inline void nc_growfor_arr(struct NCArray *pool, const size_t req_space)
+{
+#ifdef PARANOID
+	ASSERT(pool != NULL);
+	ASSERT(pool._cap != 0);
+#endif
+
+	while (NC_ARR_SPACE(pool) < req_space)
+	{
+		pool->_cap = NC_ARR_CAPFAC(pool->_cap);
+	}
+	void *const p = pool->data;
+	pool->data = realloc(pool->data, pool->_cap * sizeof(nchar_t));
+	if (pool->data == NULL)
+	{
+		free(p);
+		ERR_MSG("failed to realloc data");
+	}
+}
+
